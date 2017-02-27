@@ -48,11 +48,53 @@ class M2M
 	int width;
 	int height;
 	int fps;
+	int bitrate;
+	int gop;
+
 	std::vector<BufferMapping> inputBuffers;
 	std::vector<BufferMapping> outputBuffers;
 	bool streamActive = false;
 	std::queue<int> freeInputBuffers;
 
+
+	void SetBitrate(int value)
+	{
+		v4l2_ext_control ctrl[2] = { 0 };
+		ctrl[0].id = V4L2_CID_MPEG_VIDEO_BITRATE;
+		ctrl[0].value = value;
+
+		ctrl[1].id = V4L2_CID_MPEG_VIDEO_FRAME_RC_ENABLE;
+		ctrl[1].value = 1;
+
+		v4l2_ext_controls ctrls = { 0 };
+		ctrls.ctrl_class = V4L2_CTRL_CLASS_MPEG;
+		ctrls.count = 2;
+		ctrls.controls = ctrl;
+
+		int io = ioctl(mfc_fd, VIDIOC_S_EXT_CTRLS, &ctrls);
+		if (io != 0)
+		{
+			throw Exception("VIDIOC_S_EXT_CTRLS failed.");
+		}
+	}
+
+	void SetGroupOfPictures(int value)
+	{
+		v4l2_ext_control ctrl = { 0 };
+		ctrl.id = V4L2_CID_MPEG_VIDEO_GOP_SIZE;
+		ctrl.value = value;
+
+		v4l2_ext_controls ctrls = { 0 };
+		ctrls.ctrl_class = V4L2_CTRL_CLASS_MPEG;
+		ctrls.count = 1;
+		ctrls.controls = &ctrl;
+
+		int io = ioctl(mfc_fd, VIDIOC_S_EXT_CTRLS, &ctrls);
+		if (io != 0)
+		{
+			throw Exception("VIDIOC_S_EXT_CTRLS failed.");
+		}
+	}
 
 	void ApplyInputSettings()
 	{
@@ -88,6 +130,11 @@ class M2M
 		fprintf(stderr, "capture.timeperframe: numerator=%d, denominator=%d\n",
 			streamParm.parm.capture.timeperframe.numerator,
 			streamParm.parm.capture.timeperframe.denominator);
+
+
+		SetBitrate(bitrate);
+		
+		SetGroupOfPictures(gop);
 	}
 
 	void CreateInputBuffers()
@@ -336,8 +383,8 @@ class M2M
 
 public:
 
-	M2M(int width, int height, int fps)
-		: width(width), height(height), fps(fps)
+	M2M(int width, int height, int fps, int bitrate, int gop)
+		: width(width), height(height), fps(fps), bitrate(bitrate), gop(gop)
 	{
 		// O_NONBLOCK prevents deque operations from blocking if no buffers are ready
 		mfc_fd = open(decoderName, O_RDWR | O_NONBLOCK, 0);
@@ -447,7 +494,7 @@ public:
 	}
 
 
-	bool EncodeNV12(const char* y, const char* uv)
+	bool EncodeNV12(const unsigned char* y, const unsigned char* uv)
 	{
 		bool result;
 
@@ -577,4 +624,6 @@ public:
 
 		return result;
 	}
+
+
 };

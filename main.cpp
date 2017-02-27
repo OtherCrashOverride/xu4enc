@@ -8,6 +8,7 @@
 #include <exception>
 #include <vector>
 #include <cstring>
+#include <cstdlib>
 
 #include <linux/videodev2.h> // V4L
 #include <sys/mman.h>	// mmap
@@ -15,12 +16,147 @@
 #include "M2M.h"
 
 
-// https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Cachoeira_Santa_B%C3%A1rbara_-_Rafael_Defavari.jpg/1280px-Cachoeira_Santa_B%C3%A1rbara_-_Rafael_Defavari.jpg
-// ffmpeg -i 1280px-Cachoeira_Santa_Bárbara_-_Rafael_Defavari.jpg -f rawvideo -pix_fmt nv12 default.nv12
+const int DEFAULT_BITRATE = 1000000 * 5;
+
+
+struct option longopts[] = {
+	{ "width",			required_argument,	NULL,	'w' },
+	{ "height",			required_argument,	NULL,	'h' },
+	{ "fps",			required_argument,	NULL,	'f' },
+	{ "bitrate",		required_argument,	NULL,	'b' },
+	{ "gop",			required_argument,	NULL,	'g' },
+	{ 0, 0, 0, 0 }
+};
 
 
 int main(int argc, char** argv)
 {
+	int io;
+
+
+	// options
+	int width = -1;
+	int height = -1;
+	int framerate = -1;
+	int bitrate = DEFAULT_BITRATE;
+	int gop = 10;
+
+
+	int c;
+	while ((c = getopt_long(argc, argv, "w:h:f:b:g:", longopts, NULL)) != -1)
+	{
+		switch (c)
+		{
+			case 'w':
+				width = atoi(optarg);
+				break;
+
+			case 'h':
+				height = atoi(optarg);
+				break;
+
+			case 'f':
+				framerate = atoi(optarg);
+				break;
+
+			case 'b':
+				bitrate = atoi(optarg);
+				break;
+
+			case 'g':
+				gop = atoi(optarg);
+				break;
+
+			default:
+				throw Exception("Unknown option.");
+		}
+	}
+
+
+	if (width == -1 || height == -1 ||
+		framerate == -1)
+	{
+		throw Exception("Required parameter missing.");
+	}
+
+
+
+	// Initialize the encoder
+	fprintf(stderr, "Initialize encoder: width=%d, height=%d, frame_rate=%d, bit_rate=%d, gop=%d\n",
+		width, height, framerate, bitrate, gop);
+
+	M2M codec(width, height, framerate, bitrate, gop);
+	
+
+	// Start streaming
+	int frameCount = 0;
+
+	// TODO: smart pointer
+	int bufferSize = width * height;	// Y	
+	bufferSize += bufferSize / 2;	// U, V
+
+	unsigned char* input = new unsigned char[bufferSize];
+
+	const int outputBufferSize = width * height * 4;
+	char* outputBuffer = new char[outputBufferSize];
+
+	while (true)
+	{
+		// get buffer
+		ssize_t totalRead = 0;
+		while (totalRead < bufferSize)
+		{
+			ssize_t readCount = read(STDIN_FILENO, input + totalRead, bufferSize - totalRead);
+			if (readCount <= 0)
+			{
+				//throw Exception("read failed.");
+
+				// End of stream?
+				fprintf(stderr, "read failed. (%d)\n", readCount);
+				break;
+			}
+			else
+			{
+				totalRead += readCount;
+			}
+		}
+
+		if (totalRead < bufferSize)
+		{
+			fprintf(stderr, "read underflow. (%d of %d)\n", totalRead, bufferSize);
+			break;
+		}
+
+
+		// Encode the video frames
+		if (!codec.EncodeNV12(&input[0], &input[width * height]))
+		{
+			fprintf(stderr, "codec.EncodeN12 failed.\n");
+		}
+
+		int outCnt = codec.GetEncodedData(&outputBuffer[0]);
+		if (outCnt > 0)
+		{
+			ssize_t writeCount = write(STDOUT_FILENO, &outputBuffer[0], outCnt);
+			if (writeCount < 0)
+			{
+				throw Exception("write failed.");
+			}
+		}
+
+
+		// Stats
+		if ((frameCount % 100) == 0)
+		{
+			fprintf(stderr, "frameCount=%d.\n", frameCount);
+		}
+
+		++frameCount;
+	}
+
+	return 0;
+
+#if 0
 	// Load the NV12 test data
 	int fd = open("default.nv12", O_RDONLY);
 	if (fd < 0)
@@ -97,6 +233,7 @@ int main(int argc, char** argv)
 	close(fdOut);
 	
 	return 0;
+#endif
 }
 
 
