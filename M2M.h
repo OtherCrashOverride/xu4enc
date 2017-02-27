@@ -57,6 +57,33 @@ class M2M
 	std::queue<int> freeInputBuffers;
 
 
+	void SetProfile()
+	{
+		//V4L2_CID_MPEG_VIDEO_H264_PROFILE = V4L2_MPEG_VIDEO_H264_PROFILE_HIGH
+		//V4L2_CID_MPEG_VIDEO_H264_LEVEL = V4L2_MPEG_VIDEO_H264_LEVEL_4_0
+
+#if 1
+		v4l2_ext_control ctrl[2] = { 0 };
+		ctrl[0].id = V4L2_CID_MPEG_VIDEO_H264_PROFILE;
+		ctrl[0].value = V4L2_MPEG_VIDEO_H264_PROFILE_MAIN;
+
+		ctrl[1].id = V4L2_CID_MPEG_VIDEO_H264_LEVEL;
+		ctrl[1].value = V4L2_MPEG_VIDEO_H264_LEVEL_4_0;
+
+		v4l2_ext_controls ctrls = { 0 };
+		ctrls.ctrl_class = V4L2_CTRL_CLASS_MPEG;
+		ctrls.count = 2;
+		ctrls.controls = ctrl;
+
+		int io = ioctl(mfc_fd, VIDIOC_S_EXT_CTRLS, &ctrls);
+		if (io != 0)
+		{
+			throw Exception("VIDIOC_S_EXT_CTRLS failed.");
+		}
+#endif
+
+	}
+
 	void SetBitrate(int value)
 	{
 		v4l2_ext_control ctrl[2] = { 0 };
@@ -131,6 +158,8 @@ class M2M
 			streamParm.parm.capture.timeperframe.numerator,
 			streamParm.parm.capture.timeperframe.denominator);
 
+
+		SetProfile();
 
 		SetBitrate(bitrate);
 		

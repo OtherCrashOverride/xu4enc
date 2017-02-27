@@ -9,6 +9,7 @@
 #include <vector>
 #include <cstring>
 #include <cstdlib>
+#include <thread>
 
 #include <linux/videodev2.h> // V4L
 #include <sys/mman.h>	// mmap
@@ -113,6 +114,8 @@ int main(int argc, char** argv)
 
 				// End of stream?
 				fprintf(stderr, "read failed. (%d)\n", readCount);
+
+				// TODO: Signal codec and flush
 				break;
 			}
 			else
@@ -129,21 +132,34 @@ int main(int argc, char** argv)
 
 
 		// Encode the video frames
-		if (!codec.EncodeNV12(&input[0], &input[width * height]))
+		while (!codec.EncodeNV12(&input[0], &input[width * height]))
 		{
 			fprintf(stderr, "codec.EncodeN12 failed.\n");
+			std::this_thread::yield();
 		}
 
-		int outCnt = codec.GetEncodedData(&outputBuffer[0]);
-		if (outCnt > 0)
+		while (true)
 		{
-			ssize_t writeCount = write(STDOUT_FILENO, &outputBuffer[0], outCnt);
-			if (writeCount < 0)
+			int outCnt = codec.GetEncodedData(&outputBuffer[0]);
+			if (outCnt <= 0)
 			{
-				throw Exception("write failed.");
+				break;
+			}
+
+			size_t offset = 0;
+			while (offset < outCnt)
+			{
+				ssize_t writeCount = write(STDOUT_FILENO, &outputBuffer[0] + offset, outCnt - offset);
+				if (writeCount < 0)
+				{
+					throw Exception("write failed.");
+				}
+				else
+				{
+					offset += writeCount;
+				}
 			}
 		}
-
 
 		// Stats
 		if ((frameCount % 100) == 0)
