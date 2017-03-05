@@ -1,3 +1,5 @@
+#pragma once
+
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -5,7 +7,6 @@
 #include <sys/ioctl.h>
 #include <getopt.h>
 
-#include <exception>
 #include <vector>
 #include <queue>
 #include <cstring>
@@ -14,26 +15,18 @@
 #include <sys/mman.h>	// mmap
 #include <stdint.h>
 
-
-class Exception : public std::exception
-{
-public:
-	Exception(const char* message)
-		: std::exception()
-	{
-		fprintf(stderr, "%s\n", message);
-	}
-
-};
+#include "Exception.h"
+#include "BufferMapping.h"
 
 
-struct BufferMapping
-{
-	void* Start0;
-	size_t Length0;
-	void* Start1;
-	size_t Length1;
-};
+
+//struct BufferMapping
+//{
+//	void* Start0;
+//	size_t Length0;
+//	void* Start1;
+//	size_t Length1;
+//};
 
 
 class M2M
@@ -572,7 +565,7 @@ public:
 			int io = ioctl(mfc_fd, VIDIOC_QUERYBUF, &buffer);
 			if (io < 0)
 			{
-				throw Exception("VIDIOC_QUERYBUF failed.");
+				throw Exception("M2M 00: VIDIOC_QUERYBUF failed.");
 			}
 
 			// TODO validate buffer size

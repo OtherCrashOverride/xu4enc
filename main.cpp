@@ -15,6 +15,7 @@
 #include <sys/mman.h>	// mmap
 
 #include "M2M.h"
+#include "Scaler.h"
 
 
 const int DEFAULT_BITRATE = 1000000 * 5;
@@ -33,6 +34,10 @@ struct option longopts[] = {
 int main(int argc, char** argv)
 {
 	int io;
+	
+
+
+	//---------
 
 
 	// options
@@ -81,24 +86,39 @@ int main(int argc, char** argv)
 	}
 
 
+	// Initialize the scaler
+	Int32x2 sourceSize(width, height);
+	Int32x2 destSize(width / 2, height / 2);
+	
+	Scaler scaler(sourceSize, destSize);
+
+	unsigned char srcY[sourceSize.X * sourceSize.Y];
+	unsigned char srcUV[sourceSize.X * sourceSize.Y / 2];
+
+	unsigned char* dstY = new unsigned char[destSize.X * destSize.Y];
+	unsigned char* dstUV = new unsigned char[destSize.X * destSize.Y / 2];
+
+	//scaler.Scale(srcY, srcUV, dstY, dstUV);
+
+
 
 	// Initialize the encoder
 	fprintf(stderr, "Initialize encoder: width=%d, height=%d, frame_rate=%d, bit_rate=%d, gop=%d\n",
 		width, height, framerate, bitrate, gop);
 
-	M2M codec(width, height, framerate, bitrate, gop);
+	M2M codec(destSize.X, destSize.Y, framerate, bitrate, gop);
 	
 
 	// Start streaming
 	int frameCount = 0;
 
 	// TODO: smart pointer
-	int bufferSize = width * height;	// Y	
+	int bufferSize = sourceSize.X * sourceSize.Y;	// Y	
 	bufferSize += bufferSize / 2;	// U, V
 
 	unsigned char* input = new unsigned char[bufferSize];
 
-	const int outputBufferSize = width * height * 4;
+	const int outputBufferSize = destSize.X * destSize.Y * 4;	// h264 output buffer
 	char* outputBuffer = new char[outputBufferSize];
 
 	while (true)
@@ -131,12 +151,19 @@ int main(int argc, char** argv)
 		}
 
 
+		// Scale the video
+		scaler.Scale(&input[0], &input[sourceSize.X * sourceSize.Y],
+				     dstY, dstUV);
+
 		// Encode the video frames
-		while (!codec.EncodeNV12(&input[0], &input[width * height]))
+		//while (!codec.EncodeNV12(&input[0], &input[width * height]))
+		while (!codec.EncodeNV12(dstY, dstUV))
 		{
 			fprintf(stderr, "codec.EncodeN12 failed.\n");
 			std::this_thread::yield();
 		}
+
+		//fprintf(stderr, "frameCount=%d.\n", frameCount);
 
 		while (true)
 		{
